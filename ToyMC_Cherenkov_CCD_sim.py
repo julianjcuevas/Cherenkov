@@ -19,11 +19,11 @@ def isotropic_source(theta_a, theta_b):
     phi = 2*np.pi*r1
 
     r2 = np.random.uniform(0,1)
-    cos_sq_th = math.cos(theta_a)**2 + r2*(math.cos(theta_b)**2 - math.cos(theta_a)**2)
+    cos_sq_th = np.cos(theta_a)**4 + r2*(np.cos(theta_b)**4 - np.cos(theta_a)**4)
 
-    theta = math.acos(math.sqrt(cos_sq_th))
+    theta = np.arccos(np.power(cos_sq_th, 1/4))
 
-    return phi, cos_sq_th, theta
+    return phi, theta
 
 
 def muon_incident_on_CCD(X_ccd, Y_ccd):
@@ -66,16 +66,29 @@ def cherenkov_photons(E, wavelength, n, k, z):
     m = 106E6 #muon mass eV/c
     B = math.sqrt((E**2 - m**2))/E
 
-    const = 2*np.pi*alpha*z
+    const = 2*np.pi*alpha*z #need to update this later with code for angle of incidence
     denom = (n+1j*k)**2 * (B**2)
     dN = const*(1-(1/(denom)))/(wavelength**2)
 
     N = integrate.simps(dN, wavelength)
 
     ch_angle = np.arccos(1/(B*(n+1j*k)))*(180/np.pi)
-    
+
     return int(N.real), ch_angle.real
 
+def cherenkov_photon_properties(muon_path, phi, lam_0, lam_1):
+    '''
+    This function generates a position along the path of muon for generation
+    of a cherenkov photon and determines its associated wavelength
+    '''
+    r = np.random.uniform()
+
+    x = r*muon_path*np.sin(phi)
+    y = r*muon_path*np.cos(phi)
+
+    lamda = lam_0/(1 - r*(1-lam_0/lam_1))
+
+    return x, y, lamda
 
 
 
@@ -92,20 +105,20 @@ def plot_check():
         phi, cos_sq_th, theta = isotropic_source(0, math.pi/2)
         angle.append(phi)
         cone.append(cos_sq_th)
-        zenith.append(theta)
+        zenith.append(theta*(180/np.pi))
 
     n_bins = 40
 
     plt.hist(angle, bins = n_bins, color = '#377eb8', edgecolor = 'k')
     plt.xlabel("Angular Distribution")
     plt.ylabel("Counts")
-    plt.title("Angular Distribution of Isotropic Source")
+    plt.title(r"$\phi$ Distribution of Isotropic Source")
     plt.show()
 
     plt.hist(cone, bins = n_bins, color = '#377eb8', edgecolor = 'k')
     plt.xlabel("Angular Distribution")
     plt.ylabel("Counts")
-    plt.title(r"$\cos^2{\theta}$ Distribution of Isotropic Source")
+    plt.title(r"$\cos^4{\theta}$ Distribution of Isotropic Source")
     plt.show()
 
     plt.hist(zenith, bins = n_bins, color = '#377eb8', edgecolor = 'k')
@@ -150,14 +163,43 @@ Y_p = [] #muon i y-coordinate
 Phi_p = [] #muon i azimuthal angle of incidence
 Theta_p = [] #muon i zenith angle of incidence
 
-# i use the muon flux to determine the number of muons incident in ccd per dt
-for p in range(flux):
+X_ch_ph = [] #the origin x pos of ch. photon i of given energy
+Y_ch_ph = [] #the origin y pos of ch. photon i  of given energy
+lam_ch_ph = [] #the wavelength of ch. photon i
+status_ch = [] #boolean value of whether the photon was absorbed or escaped
+X_ch_abs = [] #absorption x pos of photon i
+Y_ch_abs = [] #absorpiton y pos of photon i
+Ch_ID = [] #id for given photons
+
+h = 4.13567E-15 #planck's const in eV/Hz
+c = 3E8 #speed of light in vacuum m/s
+
+events = 1000
+
+
+for p in range(events):
     x_p, y_p = muon_incident_on_CCD(X_ccd, Y_ccd)
-    phi, cos_sq, theta = isotropic_source(th_1, th_2)
+    phi, theta = isotropic_source(th_1, th_2)
     X_p.append(x_p)
     Y_p.append(y_p)
     Phi_p.append(phi)
     Theta_p.append(theta)
+
+    muon_path = ccd_thickness/(np.cos(theta)) #calculates the muon path length in ccd
+
+    ch_ph_num, ch_angle = cherenkov_photons(E_muon, wavelength*1E-9, n, k, muon_path)
+    #print(ch_ph_num)
+    for photon in range(ch_ph_num):
+        x_ch, y_ch, lam = cherenkov_photon_properties(muon_path, phi, 400E-9, 1000E-9)
+        #print(lam)
+        X_ch_ph.append(x_ch)
+        Y_ch_ph.append(y_ch)
+        lam_ch_ph.append(lam*1E9)
+        Ch_ID.append(photon)
+
+
+plt.hist(lam_ch_ph, bins = 40, color = '#377eb8', edgecolor = 'k')
+plt.show()
 
 print(cherenkov_photons(E_muon, wavelength*1E-9, n, k, ccd_thickness))
 #plt.scatter(wavelength, n)
