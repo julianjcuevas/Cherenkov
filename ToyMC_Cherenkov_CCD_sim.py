@@ -92,26 +92,72 @@ def cherenkov_photon_properties(x_p, y_p, h, theta, phi, lam_0, lam_1):
 
     return x, y, z, lamda
 
-def absorption_depth_cherenkov(abs, wavelength, lam,x_ch, y_ch, z_ch, theta, phi):
+
+def absorption_dist_cherenkov(abs, wavelength, lam, theta, phi):
     '''
     Determines the point of absorption for a cherenkov photon of a given wavelength
+    in the muon frame (ie the z_prime axis coincides with the muon path)
+
+    In this calculation we have the photon being generated in the origin of the
+    primed axis, thus values we generate are merely the displacement from the origin
+
+    once we transform to the ccd frame we determine the cherenkov photon absorption
+    position in the ccd
     '''
 
     depth = interpolate.interp1d(wavelength, abs, kind = 'linear')
 
     abs_length = -(1/depth(lam*1E9))*np.log(np.random.uniform(0,1))
 
-    x_abs = x_ch - abs_length*np.sin(theta)*np.cos(phi)
-    y_abs = y_ch - abs_length*np.sin(theta)*np.sin(phi)
-    z_abs = z_ch - abs_length*np.cos(theta)
+    x_dis = abs_length*np.sin(theta)*np.cos(phi)
+    y_dis = abs_length*np.sin(theta)*np.sin(phi)
+    z_dis = abs_length*np.cos(theta)
 
-    return x_abs, y_abs, z_abs
+    return x_dis, y_dis, z_dis
+
+def rotation_onto_ccd_frame(ch_theta, ch_phi, theta, phi):
+    '''
+    uses the ch photon direction( theta and phi ) in respect to the muon frame and the muon's direction
+    (theta and phi) in respect to the ccd frame to determine the ch photon direction in respect
+    to the ccd frame (theta and phi)
+    '''
+
+    T_gamma = theta + ch_theta*np.cos(ch_phi) #determines theta in respect to ccd
+    P_gamma = phi + ch_theta*np.sin(ch_phi) #determines phi in respect to the ccd
+
+    return T_gamma, P_gamma
+
+def dot_product(x_mu, y_mu, z_mu, x_ch, y_ch, z_ch, x_abs, y_abs, z_abs):
+
+    '''uses dot product to make sure we return the cherenkov angle
+        between muon vector and ch photon vector '''
+
+    dot = (x_ch-x_mu)*(x_abs-x_ch) + (y_ch-y_mu)*(y_abs-y_ch) + (z_ch-z_mu)*(z_abs-z_ch)
+    mu_mag = np.sqrt((x_ch-x_mu)**2 + (y_ch-y_mu)**2 + (z_ch-z_mu)**2)
+    abs_mag = np.sqrt((x_abs-x_ch)**2 + (y_abs-y_ch)**2 + (z_abs-z_ch)**2)
+
+    angle = np.arccos((dot/(mu_mag*abs_mag)))
+
+    return angle
+
+def critical_angle(wavelength, n, k, theta_gamma, lam):
+    '''
+    Given a cherenkov photon of wavelength lambda, this function calculates the
+    associated critical angle for a photon exiting the ccd into vacuum (n =1)
+    '''
+    modulus = np.abs(n + 1j*k) #calculates modulus of index of refraction
+    print(modulus)
+    index = interpolate.interp1d(wavelength, modulus, kind = 'linear')
+    crit_angle = np.arcsin(1/index(lam*1E9))
+
+    return crit_angle
 
 
 def plot_check():
     #plot histogram to check for flat line along degrees
 
     N = 100000
+
 
     angle = []
     #cone = []
@@ -145,12 +191,12 @@ def plot_check():
 '''
 
 
-plot_check()
+#plot_check()
 
 
 
-X_ccd = 9 #cm
-Y_ccd = 1.5 #cm
+X_ccd = 9E-2 #m
+Y_ccd = 1.5E-2 #m
 ccd_thickness = 675E-6 #meters
 
 I_0 = 1 #muon flux at theta = 0 per cm^2 per min
@@ -189,18 +235,18 @@ status_ch = [] #boolean value of whether the photon was absorbed or escaped
 X_ch_abs = [] #absorption x pos of photon i
 Y_ch_abs = [] #absorpiton y pos of photon i
 Z_ch_abs = [] #absorption z pos of photon i
-Ch_ID = [] #id for given photons
+Ch_ID = [] #id for given photons per muon
 Ch_num_per_muon = []
 
 h = 4.13567E-15 #planck's const in eV/Hz
 c = 3E8 #speed of light in vacuum m/s
 
-events = 10000
+events = 100
 
 
 for p in range(events):
     x_p, y_p = muon_incident_on_CCD(X_ccd, Y_ccd)
-    phi, theta = isotropic_source(th_1, th_2)
+    phi, theta = isotropic_source(th_1, th_2) #radians
     X_p.append(x_p)
     Y_p.append(y_p)
     Phi_p.append(phi)
@@ -211,6 +257,7 @@ for p in range(events):
     ch_ph_num, ch_angle, beta = cherenkov_photons(E_muon, wavelength*1E-9, n, k, muon_path)
     Ch_num_per_muon.append(ch_ph_num)
     Ch = interpolate.interp1d(wavelength, ch_angle, kind = 'linear')
+    #determines the cherenkov angle as a function of wavelength
     #print(ch_ph_num)
     for photon in range(ch_ph_num):
         x_ch, y_ch, z_ch, lam = cherenkov_photon_properties(x_p, y_p, ccd_thickness, theta, phi, 400E-9, 1000E-9)
@@ -221,12 +268,43 @@ for p in range(events):
         lam_ch_ph.append(lam*1E9)
         Ch_ID.append(photon)
 
-        Ch_angle = np.arccos(1/(Ch(lam*1E9)*(np.pi/180)*beta))
-        ch_rel_z = Ch_angle + theta #determine ch photon i angle relative to z in radians
+        Ch_angle = Ch(lam*1E9)*(np.pi/180) #radians
+        print(str(Ch_angle*180/np.pi) + ' ' + str(lam*1E9))
+        #ch_rel_z = Ch_angle + theta #determine ch photon i angle relative to z in radians
         # here z coincides with the z axis of the ccd
-        ch_phi = np.random.uniform(0,1)*2*np.pi
-        x_abs, y_abs, z_abs = absorption_depth_cherenkov(abs_depth, wavelength, lam,
-            x_ch, y_ch, z_ch, ch_rel_z, ch_phi)
+        ch_phi = np.random.uniform(0,1)*2*np.pi #generates the phi angle rel to muon
+
+        #code below determines the distance away from muon where ch photon is abs in ccd frame
+        theta_gamma, phi_gamma = rotation_onto_ccd_frame(Ch_angle, ch_phi, theta, phi) #radians
+
+        x_dis, y_dis, z_dis = absorption_dist_cherenkov(abs_depth, wavelength, lam,
+            theta_gamma, phi_gamma)
+
+        x_ch_abs = x_ch - x_dis #x coordinate in ccd* where photon is absorbed
+        y_ch_abs = y_ch - y_dis #y coordinate in ccd* where photon is absorbed
+        z_ch_abs = z_ch - z_dis #z coordinate in ccd* where photon is absorbed
+
+        X_ch_abs.append(x_ch_abs)
+        Y_ch_abs.append(y_ch_abs)
+
+        if z_ch_abs < 0:
+            crit = critical_angle(wavelength, n, k, theta_gamma, lam)
+            if theta_gamma < crit:
+                status_ch.append(0) #the photon exited the ccd without absorption
+            elif theta_gamma > crit:
+                status_ch.append(1)
+                Z_ch_abs.append(0-z_ch_abs) #due to reflection, this should result in the photon being at the same x, y position but the remaining z distance above 0
+            else:
+                status_ch.append(1) #the photon was either internally reflected or "rode" the boundary and was absorbed
+        else:
+            status_ch.append(1) #the photon was absorbed in ccd
+            Z_ch_abs.append(z_ch_abs)
+            
+        #t = dot_product(x_ch, y_ch, z_ch, x_dis_ccd, y_dis_ccd, z_dis_ccd)
+        t = dot_product(x_p, y_p, 0, x_ch, y_ch, z_ch, x_ch_abs, y_ch_abs, z_ch_abs)
+        print(str(t*180/np.pi))
+
+
 
 plt.hist(lam_ch_ph, bins = 40, color = '#377eb8', edgecolor = 'k')
 plt.xlabel(r'$\lambda$ (nm)')
@@ -241,6 +319,7 @@ plt.title("Distribution of Cherenkov Photons Per Muon")
 plt.show()
 
 print(cherenkov_photons(E_muon, wavelength*1E-9, n, k, ccd_thickness))
+print(status_ch)
 #plt.scatter(wavelength, n)
 #plt.scatter(wavelength, k)
 #plt.plot(wavelength, abs_depth, marker = 'o')
