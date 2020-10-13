@@ -1,6 +1,8 @@
 import numpy as np
 from scipy import integrate
 from scipy import interpolate
+import matplotlib as mpl
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 import math
 
@@ -104,12 +106,16 @@ def absorption_dist_cherenkov(abs, wavelength, lam, theta, phi):
     once we transform to the ccd frame we determine the cherenkov photon absorption
     position in the ccd
     '''
-
+    print("lam: " + str(lam))
     depth = interpolate.interp1d(wavelength, abs, kind = 'linear')
+    print("depth" + str(depth(lam*1E9)))
 
     abs_length = -(1/depth(lam*1E9))*np.log(np.random.uniform(0,1))
 
+    print("abs length m: " + str(abs_length))
+
     x_dis = abs_length*np.sin(theta)*np.cos(phi)
+    print(x_dis)
     y_dis = abs_length*np.sin(theta)*np.sin(phi)
     z_dis = abs_length*np.cos(theta)
 
@@ -182,6 +188,40 @@ def plot_check():
     plt.ylabel("Counts")
     plt.title(r"$\theta$ Distribution of Isotropic Source")
     plt.show()
+
+
+
+def ccd_plot(X_ccd, Y_ccd, Z_ccd, x_mu, y_mu, z_mu, x_abs, y_abs, z_abs, status_ch):
+    '''This function will plot the trajectories of the muons and ch photons in
+    the ccd'''
+    x_ccd = np.linspace(-X_ccd/2, X_ccd/2, num=100)
+    y_ccd = np.linspace(-Y_ccd/2, Y_ccd/2, num=100)
+    z_ccd = np.linspace(0, Z_ccd, num=100)
+
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+    ax.plot(x_ccd, np.repeat(Y_ccd/2,len(x_ccd)), np.zeros(len(x_ccd)), color='black')
+    ax.plot(x_ccd, np.repeat(-Y_ccd/2,len(x_ccd)), np.zeros(len(x_ccd)), color='black')
+    ax.plot(np.repeat(X_ccd/2,len(y_ccd)),y_ccd, np.zeros(len(y_ccd)), color='black')
+    ax.plot(np.repeat(-X_ccd/2,len(y_ccd)),y_ccd, np.zeros(len(y_ccd)), color='black')
+
+    ax.plot(x_ccd, np.repeat(Y_ccd/2,len(x_ccd)), np.repeat(Z_ccd,len(x_ccd)), color='black')
+    ax.plot(x_ccd, np.repeat(-Y_ccd/2,len(x_ccd)), np.repeat(Z_ccd,len(x_ccd)), color='black')
+    ax.plot(np.repeat(X_ccd/2,len(y_ccd)),y_ccd, np.repeat(Z_ccd,len(y_ccd)), color='black')
+    ax.plot(np.repeat(-X_ccd/2,len(y_ccd)),y_ccd, np.repeat(Z_ccd,len(y_ccd)), color='black')
+
+    ax.plot(np.repeat(X_ccd/2,len(x_ccd)), np.repeat(Y_ccd/2,len(x_ccd)), z_ccd, color='black')
+    ax.plot(np.repeat(-X_ccd/2,len(x_ccd)), np.repeat(Y_ccd/2,len(x_ccd)), z_ccd, color='black')
+    ax.plot(np.repeat(X_ccd/2,len(x_ccd)), np.repeat(-Y_ccd/2,len(x_ccd)), z_ccd, color='black')
+    ax.plot(np.repeat(-X_ccd/2,len(x_ccd)), np.repeat(-Y_ccd/2,len(x_ccd)), z_ccd, color='black')
+
+    ax.scatter(x_mu, y_mu, z_mu, color='red')
+    ax.scatter(x_abs, y_abs, z_abs, color='blue')
+    plt.show()
+
+
+
+
 '''
     plt.hist(cone, bins = n_bins, color = '#377eb8', edgecolor = 'k')
     plt.xlabel("Angular Distribution")
@@ -226,6 +266,8 @@ X_p = [] #muon i x-coordinate
 Y_p = [] #muon i y-coordinate
 Phi_p = [] #muon i azimuthal angle of incidence
 Theta_p = [] #muon i zenith angle of incidence
+X_p2 = [] #muon exit position
+Y_p2 = []
 
 X_ch_ph = [] #the origin x pos of ch. photon i of given energy
 Y_ch_ph = [] #the origin y pos of ch. photon i  of given energy
@@ -238,8 +280,8 @@ Z_ch_abs = [] #absorption z pos of photon i
 Ch_ID = [] #id for given photons per muon
 Ch_num_per_muon = []
 
-h = 4.13567E-15 #planck's const in eV/Hz
-c = 3E8 #speed of light in vacuum m/s
+h = 4.13567E-15  # planck's const in eV/Hz
+c = 3E8  # speed of light in vacuum m/s
 
 events = 100
 
@@ -253,6 +295,10 @@ for p in range(events):
     Theta_p.append(theta)
 
     muon_path = ccd_thickness/(np.cos(theta)) #calculates the muon path length in ccd
+
+    X_p2.append(x_p - ccd_thickness*np.tan(theta)*np.cos(phi))
+    Y_p2.append(y_p - ccd_thickness*np.tan(theta)*np.sin(phi))
+
 
     ch_ph_num, ch_angle, beta = cherenkov_photons(E_muon, wavelength*1E-9, n, k, muon_path)
     Ch_num_per_muon.append(ch_ph_num)
@@ -290,21 +336,25 @@ for p in range(events):
         if z_ch_abs < 0:
             crit = critical_angle(wavelength, n, k, theta_gamma, lam)
             if theta_gamma < crit:
-                status_ch.append(0) #the photon exited the ccd without absorption
+                status_ch.append(0)  # the photon exited the ccd without absorption
+                Z_ch_abs.append(z_ch_abs)
             elif theta_gamma > crit:
                 status_ch.append(1)
-                Z_ch_abs.append(0-z_ch_abs) #due to reflection, this should result in the photon being at the same x, y position but the remaining z distance above 0
+                Z_ch_abs.append(0-z_ch_abs) # due to reflection, this should result in the photon being at the same x, y position but the remaining z distance above 0
             else:
                 status_ch.append(1) #the photon was either internally reflected or "rode" the boundary and was absorbed
+                Z_ch_abs.append(z_ch_abs)
         else:
             status_ch.append(1) #the photon was absorbed in ccd
             Z_ch_abs.append(z_ch_abs)
-            
+
         #t = dot_product(x_ch, y_ch, z_ch, x_dis_ccd, y_dis_ccd, z_dis_ccd)
         t = dot_product(x_p, y_p, 0, x_ch, y_ch, z_ch, x_ch_abs, y_ch_abs, z_ch_abs)
         print(str(t*180/np.pi))
 
 
+plt.scatter(wavelength, np.log(abs_depth))
+plt.show()
 
 plt.hist(lam_ch_ph, bins = 40, color = '#377eb8', edgecolor = 'k')
 plt.xlabel(r'$\lambda$ (nm)')
@@ -318,8 +368,21 @@ plt.ylabel("Counts")
 plt.title("Distribution of Cherenkov Photons Per Muon")
 plt.show()
 
+plt.hist(status_ch,color = '#377eb8', edgecolor = 'k')
+plt.xlabel('0 if not absorbed, 1 if absorbed')
+plt.ylabel('Counts')
+plt.title('Status of Ch. Photon in CCD')
+plt.show()
+
+
+ccd_plot(X_ccd, Y_ccd, ccd_thickness, X_p, Y_p, np.repeat(ccd_thickness, len(X_p)),
+        X_ch_abs, Y_ch_abs, Z_ch_abs, status_ch)
 print(cherenkov_photons(E_muon, wavelength*1E-9, n, k, ccd_thickness))
 print(status_ch)
+
+print("muon:" + str(X_p[:10]))
+print("photon x:" + str(X_ch_abs[:10]))
+print("photon z:" + str(Z_ch_abs[:25]))
 #plt.scatter(wavelength, n)
 #plt.scatter(wavelength, k)
 #plt.plot(wavelength, abs_depth, marker = 'o')
