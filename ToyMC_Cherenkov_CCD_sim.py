@@ -110,7 +110,7 @@ def absorption_dist_cherenkov(abs, wavelength, lam, theta, phi):
     depth = interpolate.interp1d(wavelength, abs, kind = 'linear')
     print("depth" + str(depth(lam*1E9)))
 
-    abs_length = -(1/depth(lam*1E9))*np.log(np.random.uniform(0,1))
+    abs_length = -(depth(lam*1E9))*np.log(np.random.uniform(0,1))
 
     print("abs length m: " + str(abs_length))
 
