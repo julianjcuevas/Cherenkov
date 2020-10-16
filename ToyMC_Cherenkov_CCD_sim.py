@@ -213,10 +213,17 @@ def ccd_plot(X_ccd, Y_ccd, Z_ccd, x_mu, y_mu, z_mu, x_abs, y_abs, z_abs, status_
     ax.plot(np.repeat(X_ccd/2,len(x_ccd)), np.repeat(Y_ccd/2,len(x_ccd)), z_ccd, color='black')
     ax.plot(np.repeat(-X_ccd/2,len(x_ccd)), np.repeat(Y_ccd/2,len(x_ccd)), z_ccd, color='black')
     ax.plot(np.repeat(X_ccd/2,len(x_ccd)), np.repeat(-Y_ccd/2,len(x_ccd)), z_ccd, color='black')
-    ax.plot(np.repeat(-X_ccd/2,len(x_ccd)), np.repeat(-Y_ccd/2,len(x_ccd)), z_ccd, color='black')
+    ax.plot(np.repeat(-X_ccd/2,len(x_ccd)), np.repeat(-Y_ccd/2, len(x_ccd)), z_ccd, color='black')
 
     ax.scatter(x_mu, y_mu, z_mu, color='red')
-    ax.scatter(x_abs, y_abs, z_abs, color='blue')
+
+    x = np.array(x_abs)*np.array(status_ch)
+    x = x[x != 0]  # removes any photons that were not absorbed by the ccd
+    y = np.array(y_abs)*np.array(status_ch)
+    y = y[y != 0]
+    z = np.array(z_abs)*np.array(status_ch)
+    z = z[z != 0]
+    ax.scatter(x, y, z, color='blue')
     plt.show()
 
 
@@ -266,6 +273,7 @@ X_p = [] #muon i x-coordinate
 Y_p = [] #muon i y-coordinate
 Phi_p = [] #muon i azimuthal angle of incidence
 Theta_p = [] #muon i zenith angle of incidence
+Muon_path = []
 X_p2 = [] #muon exit position
 Y_p2 = []
 
@@ -295,6 +303,7 @@ for p in range(events):
     Theta_p.append(theta)
 
     muon_path = ccd_thickness/(np.cos(theta)) #calculates the muon path length in ccd
+    Muon_path.append(muon_path)
 
     X_p2.append(x_p - ccd_thickness*np.tan(theta)*np.cos(phi))
     Y_p2.append(y_p - ccd_thickness*np.tan(theta)*np.sin(phi))
@@ -333,7 +342,7 @@ for p in range(events):
         X_ch_abs.append(x_ch_abs)
         Y_ch_abs.append(y_ch_abs)
 
-        if z_ch_abs < 0:
+        if z_ch_abs < 0 or z_ch_abs > ccd_thickness:
             crit = critical_angle(wavelength, n, k, theta_gamma, lam)
             if theta_gamma < crit:
                 status_ch.append(0)  # the photon exited the ccd without absorption
